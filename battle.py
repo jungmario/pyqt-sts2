@@ -6,6 +6,9 @@ class BattleManager:
         self.hand = []
         self.discard_pile = []
         self.enemies = enemies
+        self.player = None           # GUI 셋업을 위해 추가
+        self.turn_count = 1          # GUI 셋업을 위해 추가
+        self.is_game_over = False    # GUI 셋업을 위해 추가
         random.shuffle(self.draw_pile)
 
     def draw_card(self, amount):
@@ -23,24 +26,115 @@ class BattleManager:
             self.hand.append(drawn_card)
             print(f"[{drawn_card.name}]을(를) 뽑았습니다.")
 
-    def play_card(self, hand_index, player, target_index = 0):
+    # --------------------------------------------------------
+    # [이벤트 1] 전투 초기화 (창 띄울 때 1번 실행)
+    # --------------------------------------------------------
+    def start_combat(self, player):
+        self.player = player
+        self.turn_count = 1
+        self.is_game_over = False
+        
+        enemy_names = ", ".join([e.name for e in self.enemies])
+        print(f"\n⚔️ 전투 시작! {self.player.name} VS {enemy_names} ⚔️")
+        
+        self.player.start_of_combat()
+        
+        # 셋업 후 첫 턴 바로 시작
+        self.start_player_turn()
+
+    # --------------------------------------------------------
+    # [이벤트 2] 내 턴 시작 (매 턴 자동으로 호출)
+    # --------------------------------------------------------
+    def start_player_turn(self):
+        if self.is_game_over: return
+
+        print(f"\n========== [ {self.turn_count} 턴 시작 ] ==========")
+        self.player.start_of_turn()
+        self.draw_card(5)
+
+        for e in self.enemies:
+            if e.hp > 0:
+                e.roll_intent()
+
+        self.print_status()
+        print(" ⏳ (엔진 대기 중... UI 창에서 카드나 턴 종료 버튼 클릭을 기다립니다)")
+
+    # --------------------------------------------------------
+    # [이벤트 3] 카드 사용 (UI의 카드 버튼 클릭 시 실행)
+    # 기존 play_card 메서드가 이렇게 변경되었습니다!
+    # --------------------------------------------------------
+    def process_play_card(self, hand_index, target_index=0):
+        if self.is_game_over: return
 
         if hand_index < 0 or hand_index >= len(self.hand):
             print('잘못된 카드 번호입니다.')
             return
 
+        if target_index >= len(self.enemies) or self.enemies[target_index].hp <= 0:
+            print('잘못되었거나 이미 죽은 대상입니다.')
+            return
+
         card = self.hand[hand_index]
 
-        if player.mana < card.cost :
-            print(f'마나가 부족합니다! (필요: {card.cost}, 현재: {player.mana})')
+        if self.player.mana < card.cost :
+            print(f'마나가 부족합니다! (필요: {card.cost}, 현재: {self.player.mana})')
             return
 
         played_card = self.hand.pop(hand_index)
-        player.mana -= played_card.cost
+        self.player.mana -= played_card.cost
 
         selected_target = self.enemies[target_index]
-        played_card.play(player, selected_target, self.enemies)
+        # self.player를 사용하도록 변경
+        played_card.play(self.player, selected_target, self.enemies) 
         self.discard_pile.append(played_card)
+
+        # 💡 시체 청소 및 승리 판정
+        self.check_dead_enemies_and_win()
+
+    # --------------------------------------------------------
+    # [이벤트 4] 턴 종료 (UI의 턴 종료 버튼 클릭 시 실행)
+    # --------------------------------------------------------
+    def process_end_turn(self):
+        if self.is_game_over: return
+
+        self.discard_hand()
+
+        # 1. 구체 발동
+        if hasattr(self.player, 'orbs') and self.player.orbs:
+            print("\n[ 턴 종료: 구체 지속 효과 발동 ]")
+            for orb in self.player.orbs:
+                orb.passive(self.player, self.enemies) 
+
+        if self.check_dead_enemies_and_win(): return
+
+        # 2. 적 턴 실행
+        print("\n--- 👿 적들의 턴 ---")
+        for e in self.enemies:
+            if e.hp > 0:
+                e.execute_intent(self.player)
+            if self.player.hp <= 0:
+                break
+
+        # 3. 패배 판정
+        if self.player.hp <= 0:
+            print(f"\n💀 {self.player.name} 사망... 게임 오버!")
+            self.is_game_over = True
+            return
+
+        # 4. 다음 턴으로
+        self.turn_count += 1
+        self.start_player_turn()
+
+    # --------------------------------------------------------
+    # 유틸리티 메서드들
+    # --------------------------------------------------------
+    def check_dead_enemies_and_win(self):
+        self.enemies[:] = [e for e in self.enemies if e.hp > 0]
+        if not self.enemies:
+            print(f"\n🎉 모든 적 처치 성공! 전투에서 승리했습니다!")
+            self.is_game_over = True
+            return True
+        return False
 
     def discard_hand(self):
         print("\n--- 턴 종료: 손패를 모두 버립니다 ---")
@@ -53,97 +147,3 @@ class BattleManager:
         print(f"\n[상태] 뽑을 카드: {len(self.draw_pile)}장 | 손패: {len(self.hand)}장 | 무덤: {len(self.discard_pile)}장")
         if self.hand:
             print("현재 손패: " + ", ".join([card.name for card in self.hand]))
-
-
-    # BattleManager 클래스 내부
-    def start_combat(self, player, enemies):
-        enemy_names = ", ".join([e.name for e in enemies])
-        print(f"\n⚔️ 전투 시작! {player.name} VS {enemy_names} ⚔️")
-        turn_count = 1
-
-        player.start_of_combat()
-
-        while player.hp > 0 and enemies:
-            print(f"\n========== [ {turn_count} 턴 시작 ] ==========")
-            
-            player.start_of_turn()
-            self.draw_card(5)
-
-            # 💡 [핵심 1] 매 턴이 시작될 때, 살아있는 적들이 이번 턴에 할 행동을 미리 결정합니다.
-            for e in enemies:
-                e.roll_intent()
-
-            while True:
-                print(f"\n[나] HP: {player.hp}/{player.max_hp} | 방어도: {player.block} | 마나: {player.mana}/{player.max_mana} | 구체: {player.orbs}")
-                
-                # 💡 [핵심 2] 상태창에 적들의 '의도(intent_msg)'를 함께 출력합니다.
-                for i, e in enumerate(enemies):
-                    print(f"[{i}번 적] {e.name} HP: {e.hp}/{e.max_hp} | 방어도: {e.block} | 의도: {e.intent_msg}")
-                
-                print("\n[현재 손패]")
-                for i, card in enumerate(self.hand):
-                    desc = card.get_description().replace('\n', ' / ')
-                    print(f"  {i} : {card.name} (코스트: {card.cost}) - {desc}")
-                print("  e : 턴 종료")
-
-                choice = input("\n사용할 카드 번호와 대상 번호를 띄어쓰기로 입력하세요 (예: 0 1, 턴 종료는 e): ")
-
-                if choice.lower() == 'e':
-                    break
-
-                try:
-                    inputs = choice.split()
-                    card_idx = int(inputs[0])
-                    
-                    # 타겟 미지정 시 살아있는 첫 번째 적 자동 조준
-                    if len(inputs) > 1:
-                        target_idx = int(inputs[1])
-                    else:
-                        alive_indices = [idx for idx, e in enumerate(enemies) if e.hp > 0]
-                        target_idx = alive_indices[0] if alive_indices else 0
-                    
-                    if target_idx >= len(enemies):
-                        print(" ⚠️ 잘못된 대상 번호입니다.")
-                        continue
-                        
-                    self.play_card(card_idx, player, target_idx)
-                except ValueError:
-                    print("잘못된 입력입니다. '0 1' 형식의 숫자나 'e'를 입력하세요.")
-                except IndexError:
-                    print("없는 카드 번호이거나 잘못된 대상 번호입니다.")
-                
-                # 카드 사용 후 시체 청소
-                enemies[:] = [e for e in enemies if e.hp > 0]
-                if not enemies: 
-                    break
-
-            if not enemies:
-                print(f"\n🎉 모든 적 처치 성공! 전투에서 승리했습니다!")
-                break
-
-            self.discard_hand()
-
-            # 구체 지속 효과 발동
-            if hasattr(player, 'orbs') and player.orbs:
-                print("\n[ 턴 종료: 구체 지속 효과 발동 ]")
-                for orb in player.orbs:
-                    orb.passive(player, enemies) 
-            
-            # 구체 발동 후 시체 청소
-            enemies[:] = [e for e in enemies if e.hp > 0]
-            if not enemies:
-                print(f"\n🎉 모든 적 처치 성공! 전투에서 승리했습니다!")
-                break
-
-            # 💡 [핵심 3] 적들의 턴에 미리 결정해둔 행동(execute_intent)을 실행합니다.
-            print("\n--- 👿 적들의 턴 ---")
-            for e in enemies:
-                e.execute_intent(player)
-                if player.hp <= 0:
-                    break
-
-            if player.hp <= 0:
-                print(f"\n💀 {player.name} 사망... 게임 오버!")
-                break
-                
-            turn_count += 1
