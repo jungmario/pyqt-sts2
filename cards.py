@@ -11,10 +11,10 @@ class Card:
         desc_list = [effect.get_desc() for effect in self.effects]
         return "\n".join(desc_list)
 
-    def play(self, user, target):
+    def play(self, user, target, enemies):
         print(f"\n▶ [{self.name}] 사용! (코스트: {self.cost})")
         for effect in self.effects:
-            effect.execute(user, target)
+            effect.execute(user, target, enemies)
 
 def create_strike():
     return Card("타격", "ATTACK", 1, effects=[DamageAction(6)])
