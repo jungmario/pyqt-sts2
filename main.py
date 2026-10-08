@@ -145,20 +145,66 @@ class GameWindow(QMainWindow):
             self.btn_draw_pile.setText("")
             self.btn_draw_pile.setFixedSize(80, 80) # 💡 크기 큼직하게 키우기
             self.btn_draw_pile.setStyleSheet(f"""
+                /* 1. 기본 상태 */
                 QPushButton {{
-                    border-image: url('{base_dir}/images/draw_pile.png');
+                    /* 🌟 border-image 대신 image를 사용! */
+                    image: url('{base_dir}/images/draw_pile.png');
                     background-color: transparent;
+                    
+                    /* 평소에는 투명한 테두리를 두어서 크기를 유지 */
+                    border: 2px solid transparent; 
+                    border-radius: 8px; /* 둥근 테두리 */
+                    padding: 5px; /* 이미지가 테두리에 안 닿게 살짝 여백 줌 */
+                }}
+                
+                /* 2. 마우스를 올렸을 때 (Hover) */
+                QPushButton:hover {{
+                    /* 이미지가 반투명한 흰색(0.1) 배경과 겹치면서 살짝 밝아보이는 효과 */
+                    background-color: rgba(255, 255, 255, 0.1); 
+                    
+                    /* ✨ 테두리가 민트색으로 팟! 하고 나타남 */
+                    border: 2px solid #00ffcc; 
+                }}
+                
+                /* 3. 눌렀을 때 (Pressed) */
+                QPushButton:pressed {{
+                    background-color: rgba(0, 0, 0, 0.3); /* 살짝 어두워짐 */
+                    border: 2px solid #f1c40f; /* 노란색 테두리 */
                 }}
             """)
             
         # 3. 버린 카드(Discard Pile) 무덤 버튼
         if hasattr(self, 'btn_discard_pile'):
             self.btn_discard_pile.setText("")
-            self.btn_discard_pile.setFixedSize(80, 80) # 💡 크기 큼직하게 키우기
+            self.btn_discard_pile.setFixedSize(80, 80)
+            
+            # 💡 기존의 스타일시트를 아래처럼 확장해 줍니다.
             self.btn_discard_pile.setStyleSheet(f"""
+                /* 1. 기본 상태 */
                 QPushButton {{
-                    border-image: url('{base_dir}/images/discard_pile.png');
+                    /* 🌟 border-image 대신 image를 사용! */
+                    image: url('{base_dir}/images/discard_pile.png');
                     background-color: transparent;
+                    
+                    /* 평소에는 투명한 테두리를 두어서 크기를 유지 */
+                    border: 2px solid transparent; 
+                    border-radius: 8px; /* 둥근 테두리 */
+                    padding: 5px; /* 이미지가 테두리에 안 닿게 살짝 여백 줌 */
+                }}
+                
+                /* 2. 마우스를 올렸을 때 (Hover) */
+                QPushButton:hover {{
+                    /* 이미지가 반투명한 흰색(0.1) 배경과 겹치면서 살짝 밝아보이는 효과 */
+                    background-color: rgba(255, 255, 255, 0.1); 
+                    
+                    /* ✨ 테두리가 민트색으로 팟! 하고 나타남 */
+                    border: 2px solid #00ffcc; 
+                }}
+                
+                /* 3. 눌렀을 때 (Pressed) */
+                QPushButton:pressed {{
+                    background-color: rgba(0, 0, 0, 0.3); /* 살짝 어두워짐 */
+                    border: 2px solid #f1c40f; /* 노란색 테두리 */
                 }}
             """)
 
@@ -224,22 +270,31 @@ class GameWindow(QMainWindow):
         lbl_lightning.anim_timer = QTimer(self)
 
         def animate_frame():
-            # 4프레임이 다 돌기 전이면 다음 프레임 띄우기
-            if lbl_lightning.current_frame < 4:
-                lbl_lightning.setPixmap(frames[lbl_lightning.current_frame])
-                lbl_lightning.current_frame += 1
-            # 애니메이션이 다 끝났다면 정리하기
-            else:
-                lbl_lightning.anim_timer.stop()
-                lbl_lightning.deleteLater() # 번개 이미지 삭제
-                target_widget.setStyleSheet(original_style) # 노란 상자 복구
-                
-                # ⚡ [핵심] 번개가 다 치고 사라진 직후에 화면(체력바)을 갱신합니다!
-                self.update_ui() 
+            try:
+                # 4프레임이 다 돌기 전이면 다음 프레임 띄우기
+                if lbl_lightning.current_frame < 4:
+                    lbl_lightning.setPixmap(frames[lbl_lightning.current_frame])
+                    lbl_lightning.current_frame += 1
+                # 애니메이션이 다 끝났다면 정리하기
+                else:
+                    lbl_lightning.anim_timer.stop()
+                    lbl_lightning.deleteLater() # 번개 이미지 삭제
+                    
+                    # 🌟 [핵심 방어막] 위젯이 이미 삭제되었는지 확인하고 덮어씌웁니다.
+                    try:
+                        target_widget.setStyleSheet(original_style) # 노란 상자 복구
+                    except RuntimeError:
+                        pass # 몬스터가 죽어서 위젯이 삭제되었다면 그냥 무시(pass)합니다!
+                        
+                    # ⚡ [핵심] 번개가 다 치고 사라진 직후 화면 갱신
+                    self.update_ui() 
+                    
+            except RuntimeError:
+                pass # 애니메이션 도중 게임을 끄거나 창이 닫혔을 때를 대비한 2중 방어막
 
-        # 0.05초(50ms)마다 프레임을 교체하도록 타이머 시작
+        # 타이머 시작
         lbl_lightning.anim_timer.timeout.connect(animate_frame)
-        lbl_lightning.anim_timer.start(30)
+        lbl_lightning.anim_timer.start(50)
 
     def show_draw_pile_popup(self):
         # 엔진의 뽑을 카드 더미 변수명 확인 (보통 draw_pile 또는 draw_deck)
@@ -330,7 +385,7 @@ class GameWindow(QMainWindow):
 
         # 💡 디펙트 진영 전체를 아래로 내리기 (gui.ui의 verticalLayout 활용)
         if hasattr(self, 'verticalLayout'):
-            self.verticalLayout.setContentsMargins(120, 230, 0, 0) # 위쪽 여백 150px
+            self.verticalLayout.setContentsMargins(120, 200, 0, 0) # 위쪽 여백 150px
 
         # 1. 디펙트 이름 스타일링 (금색 포인트 + 다크 박스)
         if hasattr(self, 'lbl_player_name'):
@@ -433,22 +488,53 @@ class GameWindow(QMainWindow):
         # 5. 손패 동적 렌더링
         self.clear_layout(self.layout_cards)
         for i, card in enumerate(self.battle.hand):
-            btn_card = QPushButton(f"{card.name}\n({card.cost}코스트)\n{card.get_description}")
-            btn_card.setFixedSize(110, 150)
+            # 1. 뼈대가 되는 버튼은 텍스트 없이 껍데기만 만듭니다. (크기와 클릭만 담당)
+            btn_card = QPushButton()
+            # 카드 크기와 디자인(어두운 배경, 흰색 글씨, Hover 효과) 적용
+            btn_card.setFixedSize(130, 180) 
+            
             btn_card.setStyleSheet("""
-                QPushButton {
-                    background-color: #34495e;
-                    color: white;
-                    border: 2px solid #2c3e50;
-                    border-radius: 10px;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #4e6d8c;
-                    border: 2px solid #f1c40f;
-                }
-            """)
+            /* 1. 카드의 기본 뼈대 디자인 */
+            QPushButton {
+                background-color: #2b2b2b; /* 어두운 다크 그레이 배경 */
+                border: 2px solid #444444; /* 기본 테두리 색상 */
+                border-radius: 10px;       /* 모서리 둥글게 */
+            }
+            
+            /* 2. 마우스를 카드 위에 올렸을 때 (Hover) */
+            QPushButton:hover {
+                background-color: #3a3a3a; /* 배경이 살짝 밝아짐 */
+                border: 2px solid #00ffcc; /* 🌟 형광 민트색으로 테두리 빛남 */
+            }
+            
+            /* 3. 카드를 클릭하는 순간 (Pressed) */
+            QPushButton:pressed {
+                background-color: #1e1e1e; /* 꾹 눌린 것처럼 더 어두워짐 */
+                border: 2px solid #f1c40f; /* 노란색 테두리 */
+            }
+            
+            /* 4. 내부에 들어간 글자(QLabel) 디자인 */
+            QLabel {
+                color: #ffffff;      /* 글씨를 흰색으로 반전 */
+                font-size: 13px;     /* 글씨 크기 조절 (필요에 따라 변경) */
+                font-weight: bold;   /* 글씨를 더 또렷하게 */
+            }""")
+
+            # 2. 버튼 안에 들어갈 '내용물(라벨)'을 만듭니다.
+            # 💡 아까 고친 괄호()가 포함된 완벽한 텍스트를 라벨에 넣습니다!
+            lbl_text = QLabel(f"{card.name}\n({card.cost}코스트)\n{card.get_description()}")
+            lbl_text.setAlignment(Qt.AlignCenter) # 글자 가운데 정렬
+
+            # 🌟 [핵심] 라벨이 카드 너비에 맞춰 알아서 줄을 바꾸도록 설정!
+            lbl_text.setWordWrap(True) 
+
+            # 💡 마우스 클릭이 글자에 막히지 않고 버튼(btn_card)으로 통과되도록 투명화 처리
+            lbl_text.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+            # 3. 버튼 안에 레이아웃을 만들고, 그 안에 라벨을 쏙 집어넣습니다.
+            layout = QVBoxLayout(btn_card)
+            layout.addWidget(lbl_text)
+            layout.setContentsMargins(10, 10, 10, 10)
             btn_card.clicked.connect(lambda checked, idx=i: self.on_card_clicked(idx))
             self.layout_cards.addWidget(btn_card)
 
@@ -659,9 +745,9 @@ def main():
     my_deck.append(create_zap())
     my_deck.append(create_dualcast())
 
-    front_nibbit = Nibbit("Nibbit(앞)", max_hp=44, start_step=1) 
-    back_nibbit = Nibbit("Nibbit(뒤)", max_hp=46, start_step=2)
-    crawler = FuzzyWurmCrawler("Fuzzy Wurm", max_hp=56)
+    front_nibbit = Nibbit("Nibbit(앞)", max_hp=25, start_step=1) 
+    back_nibbit = Nibbit("Nibbit(뒤)", max_hp=25, start_step=2)
+    crawler = FuzzyWurmCrawler("Fuzzy Wurm", max_hp=30)
     enemies = [front_nibbit, back_nibbit, crawler] 
 
     battle = BattleManager(my_deck, enemies)

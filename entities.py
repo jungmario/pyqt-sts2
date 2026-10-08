@@ -79,18 +79,6 @@ class Defect(Player):
 class Enemy(Entity):
     def __init__(self, name, max_hp):
         super().__init__(name, max_hp)
-        self.intent_msg = ''
-        self.intent_damage = 0
-        self.intent_type = ''
-
-    def roll_intent(self):
-        pass
-    def execute_intent(self, player):
-        pass
-
-class Enemy(Entity):
-    def __init__(self, name, max_hp):
-        super().__init__(name, max_hp)
         self.intent_msg = ""
         self.intent_damage = 0
         self.intent_type = ""
@@ -141,7 +129,7 @@ class FuzzyWurmCrawler(Enemy):
 
 
 class Nibbit(Enemy):
-    def __init__(self, name="Nibbit", max_hp=44, start_step=0):
+    def __init__(self, name="Nibbit", max_hp=46, start_step=0):
         super().__init__(name, max_hp)
         self.start_step = start_step
 
