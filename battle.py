@@ -63,7 +63,7 @@ class BattleManager:
     # [이벤트 3] 카드 사용 (UI의 카드 버튼 클릭 시 실행)
     # 기존 play_card 메서드가 이렇게 변경되었습니다!
     # --------------------------------------------------------
-    def process_play_card(self, hand_index, target_index=0):
+    def process_play_card(self, hand_index, target_index):
         if self.is_game_over: return
 
         if hand_index < 0 or hand_index >= len(self.hand):

@@ -1,6 +1,6 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QLabel, QProgressBar, QPushButton, QFrame
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QLabel, QProgressBar, QPushButton, QFrame, QDialog, QListWidget, QWidget, QHBoxLayout
 from PyQt5 import uic
 from PyQt5.QtGui import QPixmap 
 from PyQt5.QtCore import Qt, QTimer
@@ -10,12 +10,74 @@ from entities import Defect, FuzzyWurmCrawler, Nibbit
 from battle import BattleManager
 from cards import create_strike, create_defend, create_zap, create_dualcast
 
+class CardListDialog(QDialog):
+    def __init__(self, title, cards, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(400, 500)
+        # 💡 창 크기 고정 (예: 가로 1280, 세로 720) - 원하시는 해상도로 숫자를 바꿔주세요!
+        self.setFixedSize(1280, 720)
+        
+        layout = QVBoxLayout(self)
+        
+        # 타이틀 라벨
+        lbl_title = QLabel(f"<b>{title} (총 {len(cards)}장)</b>")
+        lbl_title.setStyleSheet("font-size: 15px; color: #ecf0f1; margin-bottom: 5px;")
+        layout.addWidget(lbl_title)
+        
+        # 카드 목록 리스트 위젯 (다크 테마)
+        list_widget = QListWidget()
+        list_widget.setStyleSheet("""
+            QListWidget {
+                background-color: #2c3e50;
+                color: white;
+                border-radius: 8px;
+                padding: 5px;
+                font-size: 13px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #34495e;
+            }
+            QListWidget::item:hover {
+                background-color: #34495e;
+            }
+        """)
+        
+        if not cards:
+            list_widget.addItem("카드가 없습니다.")
+        else:
+            for card in cards:
+                desc = card.get_description().replace('\n', ' ') if hasattr(card, 'get_description') else card.description
+                item_text = f"【 {card.name} 】 (코스트: {card.cost})\n{desc}"
+                list_widget.addItem(item_text)
+                
+        layout.addWidget(list_widget)
+        
+        # 확인 버튼
+        btn_close = QPushButton("확인")
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                font-weight: bold;
+                padding: 8px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close)
+
+
 class ClickableEnemyWidget(QFrame):
     def __init__(self, enemy_index, click_callback, parent=None):
         super().__init__(parent)
         self.enemy_index = enemy_index
         self.click_callback = click_callback
-        self.setCursor(Qt.PointingHandCursor) # 마우스 올리면 손가락 모양으로 변경
+        self.setCursor(Qt.PointingHandCursor)
         
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -29,51 +91,122 @@ class GameWindow(QMainWindow):
         # 💡 gui.ui 로드 
         ui_path = os.path.join(os.path.dirname(__file__), "gui.ui")
         uic.loadUi(ui_path, self)
+
+        if hasattr(self, 'layout_orbs') and self.layout_orbs.parentWidget():
+            self.layout_orbs.parentWidget().setMinimumHeight(200)
         
         self.battle = battle_manager
-        
         self.selected_card_index = None
         
-        #이미지
+        # 이미지 로딩 (기존 코드 완벽 보존)
         img_path = os.path.join(os.path.dirname(__file__), "images", "defect.png") 
         pixmap = QPixmap(img_path)
         scaled_pixmap = pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.lbl_player.setPixmap(scaled_pixmap)
         
-        
-        # 버튼 시그널 연결
+        # 버튼 시그널 연결 (람다 대신 실제 팝업 함수로 교체)
         self.btn_end_turn.clicked.connect(self.on_end_turn_clicked)
-        self.btn_draw_pile.clicked.connect(lambda: print("🃏 뽑을 카드 확인 클릭!"))
-        self.btn_discard_pile.clicked.connect(lambda: print("🗑️ 버린 카드 확인 클릭!"))
+        self.btn_draw_pile.clicked.connect(self.show_draw_pile_popup)
+        self.btn_discard_pile.clicked.connect(self.show_discard_pile_popup)
 
         # 전투 시작
         self.battle.start_combat(Defect())
+        # (main.py의 __init__ 함수 안, self.update_ui() 호출하기 전 쯤에 추가)
         
+        # 💡 경로 슬래시(\)를 CSS가 인식할 수 있게 (/)로 변환
+        base_dir = os.path.dirname(__file__).replace("\\", "/")
+        
+        # 메인 윈도우에 고유 이름을 지정해서 배경이 다른 버튼으로 번지지 않게 방지!
+        self.setObjectName("GameMainWindow") 
+        self.setStyleSheet(f"""
+            #GameMainWindow {{
+                border-image: url('{base_dir}/images/background.png');
+            }}
+        """)
+        
+        # 1. 턴 종료 버튼 (크기 키우고 글자 얹기)
+        if hasattr(self, 'btn_end_turn'):
+            self.btn_end_turn.setText("End Turn") # 💡 버튼 위에 들어갈 글자 세팅!
+            self.btn_end_turn.setFixedSize(130, 60) # 💡 넉넉한 사이즈로 키우기 (가로, 세로)
+            self.btn_end_turn.setStyleSheet(f"""
+                QPushButton {{
+                    border-image: url('{base_dir}/images/end_turn.png');
+                    color: white;             /* 글자를 하얀색으로 */
+                    font-weight: bold;        /* 굵게 */
+                    font-size: 15px;          /* 글자 크기 */
+                }}
+                QPushButton:hover {{
+                    color: #f1c40f;           /* 마우스 올리면 글자가 노란색으로 빛남 */
+                }}
+            """)
+            
+        # 2. 뽑을 카드(Draw Pile) 덱 버튼
+        if hasattr(self, 'btn_draw_pile'):
+            self.btn_draw_pile.setText("")
+            self.btn_draw_pile.setFixedSize(80, 80) # 💡 크기 큼직하게 키우기
+            self.btn_draw_pile.setStyleSheet(f"""
+                QPushButton {{
+                    border-image: url('{base_dir}/images/draw_pile.png');
+                    background-color: transparent;
+                }}
+            """)
+            
+        # 3. 버린 카드(Discard Pile) 무덤 버튼
+        if hasattr(self, 'btn_discard_pile'):
+            self.btn_discard_pile.setText("")
+            self.btn_discard_pile.setFixedSize(80, 80) # 💡 크기 큼직하게 키우기
+            self.btn_discard_pile.setStyleSheet(f"""
+                QPushButton {{
+                    border-image: url('{base_dir}/images/discard_pile.png');
+                    background-color: transparent;
+                }}
+            """)
+
         # 첫 화면 그리기
         self.update_ui()
+
+    def show_draw_pile_popup(self):
+        # 엔진의 뽑을 카드 더미 변수명 확인 (보통 draw_pile 또는 draw_deck)
+        cards = getattr(self.battle, 'draw_pile', [])
+        dialog = CardListDialog("뽑을 카드 더미 (Draw Pile)", cards, self)
+        dialog.exec_()
+
+    def show_discard_pile_popup(self):
+        # 엔진의 버린 카드 더미 변수명 확인
+        cards = getattr(self.battle, 'discard_pile', [])
+        dialog = CardListDialog("버린 카드 더미 (Discard Pile)", cards, self)
+        dialog.exec_()
         
     def on_card_clicked(self, card_idx):
         card = self.battle.hand[card_idx]
         
-        # 마나 부족 체크는 엔진(process_play_card)에 맡기거나 여기서 미리 확인
+        # 마나 부족 체크
         if self.battle.player.mana < card.cost:
-            print(" ⚠️ 마나가 부족합니다!")
+            print(" ⚠️ 마나토큰이 부족합니다!")
             return
 
-        # 💡 카드를 누르면 즉시 발동하는 게 아니라, '타겟을 골라주세요' 상태로 진입합니다.
-        self.selected_card_index = card_idx
+        if not card.requires_target:
+            # 타겟 불필요 (수비, 파지직 등) -> 즉시 발동
+            print(f">> [{card.name}] 즉시 발동!")
+            self.selected_card_index = None
+            self.battle.process_play_card(card_idx, target_index=0)
+            self.update_ui()
+        else:
+            # 타겟 필요 (타격 등) -> 적 선택 대기
+            self.selected_card_index = card_idx
         
-        # 하단 상태창이나 플레이어 상태 라벨에 안내 문구 띄우기
-        self.lbl_player_status.setText(f"🎯 [{card.name}] 타겟을 선택하세요! (공격할 적 클릭)")
+        # UI 상태창에 안내 문구 띄우기
         print(f">> [{card.name}] 선택됨. 공격할 적을 클릭하세요!")
         
     def on_enemy_clicked(self, enemy_idx):
-        # 1. 카드를 먼저 골랐는지 확인
+        # 1. 카드가 먼저 선택되어 있는지 확인
         if self.selected_card_index is not None:
             card_idx = self.selected_card_index
             self.selected_card_index = None # 타겟팅 상태 초기화
             
-            # 2. 엔진에 선택한 카드와 적 번호(target_index) 전달하여 카드 사용!
+            print(f">> {enemy_idx}번 적에게 카드 사용 시도!")
+            
+            # 2. 💡 엔진에 선택한 카드 인덱스와 '클릭한 적의 번호(enemy_idx)'를 전달!
             self.battle.process_play_card(card_idx, target_index=enemy_idx)
             
             # 3. 화면 갱신
@@ -93,144 +226,302 @@ class GameWindow(QMainWindow):
     # [핵심] 화면 갱신 함수 (턴 시작/카드 사용 시 매번 호출됨)
     # --------------------------------------------------------
     def update_ui(self):
-        # 1. 내 캐릭터(디펙트) 상태 업데이트
         p = self.battle.player
-        self.bar_player_hp.setMaximum(p.max_hp)
-        self.bar_player_hp.setValue(p.hp)
-        self.lbl_player_status.setText(f"마나: {p.mana}/{p.max_mana} | 방어: {p.block}")
-        self.lbl_player_name.setText(p.name)
-        
-        # 1-2. 구체 슬롯 동적 렌더링 (색상 분기 수정)
-        if hasattr(self, 'layout_orbs') and self.layout_orbs is not None:
-            self.clear_layout(self.layout_orbs)
-            p = self.battle.player
-            if hasattr(p, 'orbs') and p.orbs:
-                for orb in p.orbs:
-                    # 구체 이름에 따른 이모지와 슬더스풍 배경색 매핑
-                    if "전기" in orb.name or "Lightning" in str(type(orb)):
-                        text = "⚡"
-                        bg_color = "#f1c40f"  # ⚡ 번개색 (노란색/금색)
-                    elif "냉기" in orb.name or "Frost" in str(type(orb)):
-                        text = "❄️"
-                        bg_color = "#3498db"  # ❄️ 얼음색 (파란색)
-                    elif "어둠" in orb.name or "Dark" in str(type(orb)):
-                        text = "🔮"
-                        bg_color = "#8e44ad"  # 🔮 어둠색 (보라색)
-                    else:
-                        text = "🔥"
-                        bg_color = "#e84393"  # 플라즈마색 (핑크색)
-                    
-                    lbl_orb = QLabel(text)
-                    lbl_orb.setAlignment(Qt.AlignCenter)
-                    lbl_orb.setFixedSize(50, 50)
-                    # 둥근 동그라미 모양 + 가독성을 위한 글자 색상(흰색)
-                    lbl_orb.setStyleSheet(f"""
-                        background-color: {bg_color};
-                        color: white;
-                        border-radius: 25px; 
-                        font-weight: bold;
-                        font-size: 10px;
-                    """)
-                    self.layout_orbs.addWidget(lbl_orb)
-
-        # 2. 적 진영 동적 렌더링 (클릭 가능한 프레임 패널 생성)
-        self.clear_layout(self.layout_enemies)
-        for i, enemy in enumerate(self.battle.enemies):
-            # 💡 QPushButton 대신 QFrame 기반의 클릭 가능한 위젯 사용
-            frame_enemy = ClickableEnemyWidget(i, self.on_enemy_clicked)
-            frame_enemy.setFixedWidth(200)
+        # 💡 플레이어 상태 라벨 텍스트 싹 지우기 (추후 상태이상 아이콘이 들어갈 자리)
+        if hasattr(self, 'lbl_player_status'):
+            self.lbl_player_status.setText("") # 텍스트를 완전히 비워버립니다!
             
-            # 슬더스풍 다크 테마 디자인 + 마우스 올릴 때(hover) 노란 테두리 효과
-            frame_enemy.setStyleSheet("""
-                QFrame {
+            # 나중에 아이콘들이 들어갈 수 있도록 공간(높이)만 살짝 확보해 둡니다.
+            self.lbl_player_status.setMinimumHeight(40) 
+            self.lbl_player_status.setStyleSheet("background-color: transparent;")
+        # 💡 [신규] 디펙트 에너지(마나) 이미지 및 숫자 동적 렌더링
+        if hasattr(self, 'lbl_energy'):
+            base_dir = os.path.dirname(__file__).replace("\\", "/")
+            
+            self.lbl_energy.setText(f"{p.mana}/{p.max_mana}")
+            self.lbl_energy.setAlignment(Qt.AlignCenter) # 글자를 정중앙으로
+            self.lbl_energy.setFixedSize(80, 80)
+            
+            # 에너지 이미지 적용 및 폰트 세팅 (숫자가 잘 보이게 큼직하고 굵게)
+            self.lbl_energy.setStyleSheet(f"""
+                QLabel {{
+                    image: url('{base_dir}/images/energy.png');
+                    color: white;
+                    font-size: 18px; 
+                    font-weight: bold;
+                }}
+            """)
+
+        # 💡 디펙트 진영 전체를 아래로 내리기 (gui.ui의 verticalLayout 활용)
+        if hasattr(self, 'verticalLayout'):
+            self.verticalLayout.setContentsMargins(120, 230, 0, 0) # 위쪽 여백 150px
+
+        # 1. 디펙트 이름 스타일링 (금색 포인트 + 다크 박스)
+        if hasattr(self, 'lbl_player_name'):
+            self.lbl_player_name.setText('디펙트')
+            self.lbl_player_name.setStyleSheet("""
+                color: #f1c40f; 
+                font-size: 14px; /* 글자 크기 축소 */
+                font-weight: bold; 
+                background-color: transparent; /* 💡 배경을 완전 투명하게! */
+                /* border 나 padding 같은 투박한 요소 제거 */
+            """)
+        
+        # 1. 체력바(QProgressBar) 설정
+        if hasattr(self, 'bar_player_hp'):
+            self.bar_player_hp.setMaximum(p.max_hp)
+            self.bar_player_hp.setValue(p.hp)
+            
+            # '현재체력 / 최대체력' 숫자로 표시
+            self.bar_player_hp.setFormat("%v / %m")
+            
+            # 💡 방어도가 있으면 바 색상을 하늘색(#3498db), 없으면 빨간색(#e74c3c)으로 변경!
+            chunk_color = "#3498db" if p.block > 0 else "#e74c3c"
+            
+            self.bar_player_hp.setStyleSheet(f"""
+                QProgressBar {{
                     background-color: #2c3e50;
                     border: 2px solid #34495e;
-                    border-radius: 12px;
+                    border-radius: 6px;
+                    text-align: center;
+                    color: #ffffff; /* 글자는 어떤 바 색상이든 잘 보이게 항상 흰색으로 고정 */
+                    font-weight: bold;
+                    font-size: 13px;
+                    height: 22px;
+                }}
+                QProgressBar::chunk {{
+                    background-color: {chunk_color}; /* 방어도 유무에 따라 바 색상 동적 변경 */
+                    border-radius: 4px;
+                }}
+            """)
+
+        # 2. 방패 아이콘 및 방어도 숫자 표시 (lbl_player_block)
+        if hasattr(self, 'lbl_player_block'):
+            if p.block > 0:
+                self.lbl_player_block.setText(f"🛡️ {p.block}")
+                self.lbl_player_block.setStyleSheet("""
+                    color: #3498db; 
+                    font-weight: bold; 
+                    font-size: 14px; 
+                    margin-left: 5px;
+                """)
+                self.lbl_player_block.show()
+            else:
+                self.lbl_player_block.setText("") 
+                self.lbl_player_block.hide()
+
+        # 4. 구체 슬롯 동적 렌더링 (PNG 이미지 적용 + 오른쪽부터 채우기 고증)
+        if hasattr(self, 'layout_orbs') and self.layout_orbs is not None:
+            self.clear_layout(self.layout_orbs)
+            
+            max_slots = getattr(p, 'max_slots', getattr(p, 'max_orbs', 3))
+            active_orbs = getattr(p, 'orbs', [])
+            empty_count = max_slots - len(active_orbs)
+            
+            for i in range(max_slots):
+                lbl_orb = QLabel()
+                lbl_orb.setAlignment(Qt.AlignCenter)
+                lbl_orb.setFixedSize(48, 48)
+                
+                img_filename = ""
+                if i < empty_count:
+                    # 🕳️ 빈 슬롯 이미지 파일명 (images/ 폴더 내 파일명 확인)
+                    img_filename = "orb_empty.png"
+                else:
+                    # ⚡ 활성화된 구체 종류별 이미지 파일명 매핑
+                    orb_idx = i - empty_count
+                    orb = active_orbs[orb_idx]
+                    
+                    if "전기" in orb.name or "Lightning" in str(type(orb)):
+                        img_filename = "orb_lightning.png"
+                    elif "냉기" in orb.name or "Frost" in str(type(orb)):
+                        img_filename = "orb_frost.png"
+                    elif "어둠" in orb.name or "Dark" in str(type(orb)):
+                        img_filename = "orb_dark.png"
+                    else:
+                        img_filename = "orb_plasma.png"
+                
+                # 이미지 경로 로드 및 렌더링
+                img_path = os.path.join(os.path.dirname(__file__), "images", img_filename)
+                if os.path.exists(img_path):
+                    pixmap = QPixmap(img_path)
+                    scaled_pixmap = pixmap.scaled(44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    lbl_orb.setPixmap(scaled_pixmap)
+                else:
+                    # 이미지가 없을 경우 대체 텍스트
+                    lbl_orb.setText("·" if i < empty_count else "⚡")
+                    lbl_orb.setStyleSheet("color: white; font-weight: bold; background-color: #2c3e50; border-radius: 22px;")
+                
+                self.layout_orbs.addWidget(lbl_orb)
+
+        # 5. 손패 동적 렌더링
+        self.clear_layout(self.layout_cards)
+        for i, card in enumerate(self.battle.hand):
+            btn_card = QPushButton(f"{card.name}\n({card.cost}코스트)\n{card.get_description}")
+            btn_card.setFixedSize(110, 150)
+            btn_card.setStyleSheet("""
+                QPushButton {
+                    background-color: #34495e;
+                    color: white;
+                    border: 2px solid #2c3e50;
+                    border-radius: 10px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #4e6d8c;
+                    border: 2px solid #f1c40f;
+                }
+            """)
+            btn_card.clicked.connect(lambda checked, idx=i: self.on_card_clicked(idx))
+            self.layout_cards.addWidget(btn_card)
+
+        # 6. 적 진영 동적 렌더링 (이미지 타겟팅 & 의도 아이콘화)
+        self.clear_layout(self.layout_enemies)
+        self.layout_enemies.setSpacing(10)
+        self.layout_enemies.setAlignment(Qt.AlignCenter)
+        # 💡 [핵심] 적 몬스터 전체를 위쪽에서 150px 만큼 아래로 밀어냅니다!
+        # 순서: (왼쪽, 위, 오른쪽, 아래) 여백
+        self.layout_enemies.setContentsMargins(200, 200, 0, 0)
+        
+        import re # 텍스트에서 데미지 숫자를 추출하기 위해 사용
+        
+        for i, enemy in enumerate(self.battle.enemies):
+            # 💡 [변경 1] 전체 프레임(ClickableEnemyWidget)을 일반 QFrame으로 변경! (전체 박스 클릭/빛남 방지)
+            frame_enemy = QFrame() 
+            frame_enemy.setFixedWidth(230) 
+            # 💡 [변경] 적 프레임 배경과 테두리를 완전 투명하게 만들어서 배경 이미지와 어우러지게 함!
+            frame_enemy.setStyleSheet("""
+                QFrame {
+                    background-color: transparent; 
+                    border: none;
                     color: white;
                     padding: 8px;
                 }
-                QFrame:hover {
-                    border: 2px solid #f1c40f; /* 마우스 올리면 노란색으로 조준 표시! */
-                    background-color: #34495e;
-                }
             """)
             
-            # 프레임 내부에 들어갈 세로 레이아웃
             vbox = QVBoxLayout(frame_enemy)
+            vbox.setAlignment(Qt.AlignCenter)
             
-            lbl_intent = QLabel(f"의도: {enemy.intent_msg}" if hasattr(enemy, 'intent_msg') else "의도: 대기중")
-            lbl_intent.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 12px;")
+            # 2. 의도(Intent) 아이콘화 처리 (복합 의도 동시 표시 지원)
+            raw_intent = getattr(enemy, 'intent_msg', '대기중')
+            
+            # 아이콘을 모아둘 빈 리스트 생성
+            intent_icons = []
+            
+            # 💡 [1] 공격 검사
+            if "공격" in raw_intent or "피해" in raw_intent:
+                nums = re.findall(r'\d+', raw_intent)
+                # 숫자가 여러 개(예: 공격 7, 방어 5)일 수 있으므로 보통 맨 앞 숫자를 데미지로 간주합니다.
+                dmg = nums[0] if nums else "?"
+                intent_icons.append(f"⚔️ {dmg}")
+                
+            # 💡 [2] 방어 검사 (elif가 아닌 if를 사용해 공격과 함께 추가될 수 있게 함!)
+            if "방어" in raw_intent:
+                intent_icons.append("🛡️")
+                
+            # 💡 [3] 힘/강화 검사
+            if "힘" in raw_intent or "강화" in raw_intent:
+                intent_icons.append("⬆️")
+                
+            # 💡 [4] 취약/약화 등 디버프 공격 시
+            if "약화" in raw_intent or "취약" in raw_intent or "디버프" in raw_intent:
+                intent_icons.append("⬇️")
+                
+            # 걸러진 아이콘이 하나도 없다면 대기 아이콘(💤), 있다면 띄어쓰기로 예쁘게 이어붙임
+            if not intent_icons:
+                display_intent = "💤"
+            else:
+                display_intent = " ".join(intent_icons) # 예: "⚔️ 7 🛡️"
+                
+            lbl_intent = QLabel(display_intent)
+            lbl_intent.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 18px;")
             lbl_intent.setAlignment(Qt.AlignCenter)
             
-            # 🖼️ 적 이미지 라벨 (이제 잘 나옵니다!)
-            lbl_enemy_img = QLabel()
+            # 💡 [변경 3] 적 이미지를 QPushButton으로 만들어서 이미지에만 호버/클릭 효과 부여!
+            btn_enemy_img = QPushButton()
+            btn_enemy_img.setFixedSize(180, 180)
+            btn_enemy_img.setCursor(Qt.PointingHandCursor) # 마우스 올리면 손가락 모양으로 변경
+            
             img_filename = self.get_enemy_image_filename(enemy.name)
             enemy_img_path = os.path.join(os.path.dirname(__file__), "images", img_filename)
+            img_url = enemy_img_path.replace("\\", "/") # CSS 적용을 위한 슬래시 변환
             
             if os.path.exists(enemy_img_path):
-                enemy_pixmap = QPixmap(enemy_img_path)
-                scaled_enemy_pixmap = enemy_pixmap.scaled(110, 110, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                lbl_enemy_img.setPixmap(scaled_enemy_pixmap)
-                lbl_enemy_img.setAlignment(Qt.AlignCenter)
+                btn_enemy_img.setStyleSheet(f"""
+                    QPushButton {{
+                        image: url('{img_url}');
+                        background-color: transparent;
+                        border: 2px solid transparent;
+                        border-radius: 10px;
+                    }}
+                    QPushButton:hover {{
+                        border: 2px solid #f1c40f; /* 마우스를 올리면 이미지만 노랗게 빛남! */
+                        background-color: rgba(241, 196, 15, 0.1);
+                    }}
+                """)
             else:
-                lbl_enemy_img.setText("(이미지 없음)")
-                lbl_enemy_img.setAlignment(Qt.AlignCenter)
+                btn_enemy_img.setText("(이미지 없음)")
+                btn_enemy_img.setStyleSheet("QPushButton:hover { border: 2px solid #f1c40f; }")
             
-            lbl_name = QLabel(f"{enemy.name}\n방어: {enemy.block}")
+            # 이미지 클릭 시 타겟팅되도록 시그널 연결
+            btn_enemy_img.clicked.connect(lambda checked, idx=i: self.on_enemy_clicked(idx))
+            
+            # 적 이름
+            lbl_name = QLabel(enemy.name)
             lbl_name.setStyleSheet("font-weight: bold; font-size: 13px; color: #ecf0f1;")
             lbl_name.setAlignment(Qt.AlignCenter)
             
-            # 💚 체력바 (이제 다시 나타납니다!)
+            # 체력바 & 방패 컨테이너 (이전 코드 동일)
+            widget_hp_block = QWidget()
+            layout_hp_block = QHBoxLayout(widget_hp_block)
+            layout_hp_block.setContentsMargins(0, 0, 0, 0)
+            layout_hp_block.setSpacing(5) 
+            layout_hp_block.setAlignment(Qt.AlignCenter) 
+            
+            lbl_enemy_block = QLabel()
+            lbl_enemy_block.setFixedWidth(55) 
+            lbl_enemy_block.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            
+            if enemy.block > 0:
+                lbl_enemy_block.setText(f"🛡️ {enemy.block}")
+                lbl_enemy_block.setStyleSheet("color: #3498db; font-weight: bold; font-size: 13px;")
+            else:
+                lbl_enemy_block.setText("") 
+            
             bar_hp = QProgressBar()
             bar_hp.setMaximum(enemy.max_hp)
             bar_hp.setValue(enemy.hp)
-            bar_hp.setStyleSheet("""
-                QProgressBar {
+            bar_hp.setFormat("%v / %m")
+            bar_hp.setFixedWidth(130) 
+            
+            enemy_chunk_color = "#3498db" if enemy.block > 0 else "#e74c3c"
+            bar_hp.setStyleSheet(f"""
+                QProgressBar {{
                     background-color: #7f8c8d;
                     border-radius: 4px;
                     text-align: center;
-                    color: white;
-                    font-size: 10px;
-                    height: 14px;
-                }
-                QProgressBar::chunk {
-                    background-color: #2ecc71;
+                    color: #ffffff;
+                    font-size: 11px;
+                    font-weight: bold;
+                    height: 18px;
+                }}
+                QProgressBar::chunk {{
+                    background-color: {enemy_chunk_color};
                     border-radius: 4px;
-                }
+                }}
             """)
             
+            layout_hp_block.addWidget(lbl_enemy_block)
+            layout_hp_block.addWidget(bar_hp)
+            
+            # 레이아웃에 조립
             vbox.addWidget(lbl_intent)
-            vbox.addWidget(lbl_enemy_img)
+            vbox.addWidget(btn_enemy_img) # QLabel 대신 생성한 QPushButton 삽입
             vbox.addWidget(lbl_name)
-            vbox.addWidget(bar_hp)
+            vbox.addWidget(widget_hp_block)
             
             self.layout_enemies.addWidget(frame_enemy)
-
-        # 3. 손패(카드) 동적 렌더링 (기존 카드 지우고 새로 그리기)
-        self.clear_layout(self.layout_cards)
-        for i, card in enumerate(self.battle.hand):
-            # 카드 버튼 텍스트 구성
-            desc = card.get_description().replace('\n', ' ')
-            btn_text = f"【 {card.name} 】\n코스트: {card.cost}\n\n{desc}"
-            
-            btn_card = QPushButton(btn_text)
-            btn_card.setMinimumSize(120, 160) # 카드 모양으로 길쭉하게
-            
-            # 💡 카드를 클릭하면 on_card_clicked 함수 실행 (i번째 카드라는 정보 전달)
-            btn_card.clicked.connect(lambda checked, idx=i: self.on_card_clicked(idx))
-            
-            self.layout_cards.addWidget(btn_card)
-
-    # --------------------------------------------------------
-    # [이벤트 핸들러] 카드 클릭 시
-    # --------------------------------------------------------
-    def on_card_clicked(self, card_idx):
-        print(f">> {card_idx}번 카드 클릭됨!")
-        # 일단은 무조건 맨 앞의 적(0번)을 타겟으로 잡도록 하드코딩
-        # (타겟팅 시스템은 다음 단계에서 구현)
-        self.battle.process_play_card(card_idx, target_index=0)
-        self.update_ui() # 카드 썼으니 화면 갱신!
-
     # --------------------------------------------------------
     # [이벤트 핸들러] 턴 종료 버튼 클릭 시
     # --------------------------------------------------------
