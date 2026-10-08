@@ -3,7 +3,7 @@ import os
 from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QLabel, QProgressBar, QPushButton, QFrame, QDialog, QListWidget, QWidget, QHBoxLayout
 from PyQt5 import uic
 from PyQt5.QtGui import QPixmap 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QRect
 
 # 우리가 만든 엔진 클래스들 불러오기
 from entities import Defect, FuzzyWurmCrawler, Nibbit
@@ -165,6 +165,82 @@ class GameWindow(QMainWindow):
         # 첫 화면 그리기
         self.update_ui()
 
+    def show_lightning_strike(self, target_index):
+        """4프레임 번개 스프라이트 애니메이션 재생 및 타격 효과"""
+        # 타겟 인덱스가 유효한지 확인
+        if target_index >= self.layout_enemies.count(): 
+            return
+
+        # 1. 타겟 적의 위젯 가져오기 및 번개를 띄울 임시 라벨 생성
+        target_widget = self.layout_enemies.itemAt(target_index).widget()
+        lbl_lightning = QLabel(self)
+        
+        # 2. 4단계 번개 스프라이트 시트 이미지 로드
+        base_dir = os.path.dirname(__file__).replace("\\", "/")
+        sprite_sheet = QPixmap(f"{base_dir}/images/lightning_orb_particle.png") # 💡 저장하신 파일명과 똑같은지 확인하세요!
+        
+        # 💡 이펙트 크기를 여기서 마음대로 조절하세요! (원하는 숫자로 자유롭게 변경)
+        effect_width = 150
+        effect_height = 300
+
+        # 3. 이미지 가로로 4등분 자르기 및 크기 조절
+        frame_width = sprite_sheet.width() // 4
+        frame_height = sprite_sheet.height()
+        
+        frames = []
+        for i in range(4):
+            rect = QRect(i * frame_width, 0, frame_width, frame_height)
+            # 💡 잘라낸 원본을 내가 설정한 크기(effect_width, effect_height)로 확대/축소합니다.
+            # (비율 무시하고 꽉 채우려면 Qt.IgnoreAspectRatio 를 사용하면 크기 통제가 가장 쉽습니다)
+            frame = sprite_sheet.copy(rect).scaled(effect_width, effect_height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            frames.append(frame)
+
+        # 액자(QLabel) 크기를 설정한 크기와 딱 맞춥니다.
+        lbl_lightning.setFixedSize(effect_width, effect_height) 
+        lbl_lightning.setPixmap(frames[0]) 
+
+        # 4. 라벨을 적 정중앙 머리 위로 이동
+        target_pos = target_widget.mapTo(self, target_widget.rect().topLeft())
+        
+        # 💡 [핵심] 자동 정중앙 계산: 적의 가로 폭과 이펙트의 가로 폭(effect_width)을 비교해서 정중앙을 맞춥니다.
+        offset_x = (target_widget.width() - effect_width) // 2
+        
+        # y좌표도 이펙트 높이(effect_height)만큼 끌어올려서 적 머리에 닿게 합니다.
+        # (숫자 50을 키우면 더 아래로 파고들고, 줄이면 허공으로 올라갑니다)
+        offset_y = -effect_height + 50 
+        
+        lbl_lightning.move(target_pos.x() + offset_x, target_pos.y() + offset_y)
+        lbl_lightning.show()
+
+        # 5. 적 상자가 노랗게 번쩍이는 타격 효과 씌우기
+        original_style = target_widget.styleSheet()
+        target_widget.setStyleSheet(original_style + """
+            background-color: rgba(241, 196, 15, 0.4);
+            border: 3px solid #f1c40f;
+        """)
+
+        # 6. 애니메이션 재생 로직 (타이머)
+        lbl_lightning.current_frame = 0
+        lbl_lightning.anim_timer = QTimer(self)
+
+        def animate_frame():
+            # 4프레임이 다 돌기 전이면 다음 프레임 띄우기
+            if lbl_lightning.current_frame < 4:
+                lbl_lightning.setPixmap(frames[lbl_lightning.current_frame])
+                lbl_lightning.current_frame += 1
+            # 애니메이션이 다 끝났다면 정리하기
+            else:
+                lbl_lightning.anim_timer.stop()
+                lbl_lightning.deleteLater() # 번개 이미지 삭제
+                target_widget.setStyleSheet(original_style) # 노란 상자 복구
+                
+                # ⚡ [핵심] 번개가 다 치고 사라진 직후에 화면(체력바)을 갱신합니다!
+                self.update_ui() 
+
+        # 0.05초(50ms)마다 프레임을 교체하도록 타이머 시작
+        lbl_lightning.anim_timer.timeout.connect(animate_frame)
+        lbl_lightning.anim_timer.start(30)
+
     def show_draw_pile_popup(self):
         # 엔진의 뽑을 카드 더미 변수명 확인 (보통 draw_pile 또는 draw_deck)
         cards = getattr(self.battle, 'draw_pile', [])
@@ -189,7 +265,7 @@ class GameWindow(QMainWindow):
             # 타겟 불필요 (수비, 파지직 등) -> 즉시 발동
             print(f">> [{card.name}] 즉시 발동!")
             self.selected_card_index = None
-            self.battle.process_play_card(card_idx, target_index=0)
+            self.battle.process_play_card(card_idx, target_index=0, vfx_callback = self.show_lightning_strike)
             self.update_ui()
         else:
             # 타겟 필요 (타격 등) -> 적 선택 대기
@@ -527,8 +603,21 @@ class GameWindow(QMainWindow):
     # --------------------------------------------------------
     def on_end_turn_clicked(self):
         print(">> 턴 종료 버튼 클릭됨!")
-        self.battle.process_end_turn()
-        self.update_ui() # 적이 때렸으니 화면 갱신!
+        # 1. 플레이어에게 전기 구체가 있는지 확인 (애니메이션 대기 여부 판단)
+        has_lightning = False
+        if hasattr(self.battle.player, 'orbs'):
+            for orb in self.battle.player.orbs:
+                orb_name = getattr(orb, 'name', orb.__class__.__name__)
+                if "전기" in orb_name or "Lightning" in orb_name:
+                    has_lightning = True
+                    break
+                    
+        # 2. battle.py의 로직을 실행하면서, 번개 이펙트 함수(리모컨)를 넘겨줍니다!
+        self.battle.process_end_turn(vfx_callback=self.show_lightning_strike)
+
+        # 3. 전기 구체가 없다면 애니메이션이 돌지 않으므로 여기서 즉시 화면 갱신
+        if not has_lightning:
+            self.update_ui()
 
     # --------------------------------------------------------
     # [유틸리티] 레이아웃 안의 위젯들을 깨끗하게 비우는 함수

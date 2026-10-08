@@ -63,7 +63,7 @@ class BattleManager:
     # [이벤트 3] 카드 사용 (UI의 카드 버튼 클릭 시 실행)
     # 기존 play_card 메서드가 이렇게 변경되었습니다!
     # --------------------------------------------------------
-    def process_play_card(self, hand_index, target_index):
+    def process_play_card(self, hand_index, target_index, vfx_callback = None):
         if self.is_game_over: return
 
         if hand_index < 0 or hand_index >= len(self.hand):
@@ -85,7 +85,7 @@ class BattleManager:
 
         selected_target = self.enemies[target_index]
         # self.player를 사용하도록 변경
-        played_card.play(self.player, selected_target, self.enemies) 
+        played_card.play(self.player, selected_target, self.enemies, vfx_callback = vfx_callback) 
         self.discard_pile.append(played_card)
 
         # 💡 시체 청소 및 승리 판정
@@ -94,7 +94,7 @@ class BattleManager:
     # --------------------------------------------------------
     # [이벤트 4] 턴 종료 (UI의 턴 종료 버튼 클릭 시 실행)
     # --------------------------------------------------------
-    def process_end_turn(self):
+    def process_end_turn(self, vfx_callback = None):
         if self.is_game_over: return
 
         self.discard_hand()
@@ -103,7 +103,7 @@ class BattleManager:
         if hasattr(self.player, 'orbs') and self.player.orbs:
             print("\n[ 턴 종료: 구체 지속 효과 발동 ]")
             for orb in self.player.orbs:
-                orb.passive(self.player, self.enemies) 
+                orb.passive(self.player, self.enemies, vfx_callback) 
 
         if self.check_dead_enemies_and_win(): return
 

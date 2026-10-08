@@ -53,12 +53,12 @@ class EvokeOrbAction(Effect):
         self.times = times
     def get_desc(self):
         return f"가장 앞의 구체를 {self.times}번 발현합니다."
-    def execute(self, user, target, enemies):
+    def execute(self, user, target, enemies, vfx_callback=None):
         if user.orbs:
             orb = user.orbs.pop(0)
             for i in range(self.times):
                 print(f" 💥 가장 앞의 [{orb} 구체] 발현!")
-                orb.evoke(user, enemies)
+                orb.evoke(user, enemies, vfx_callback = vfx_callback)
             print(f"현재 남은 구체 : {user.orbs}")
             
         else:

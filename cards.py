@@ -12,10 +12,15 @@ class Card:
         desc_list = [effect.get_desc() for effect in self.effects]
         return "\n".join(desc_list)
 
-    def play(self, user, target, enemies):
+    def play(self, user, target, enemies, vfx_callback = None):
         print(f"\n▶ [{self.name}] 사용! (코스트: {self.cost})")
         for effect in self.effects:
-            effect.execute(user, target, enemies)
+            # 💡 effect가 '구체 발현(EvokeOrbAction)' 효과일 때만 콜백을 넘겨줍니다!
+            if effect.__class__.__name__ == "EvokeOrbAction":
+                effect.execute(user, target, enemies, vfx_callback=vfx_callback)
+            else:
+                # 일반 공격/수비 카드 등은 기존대로 실행 (에러 방지)
+                effect.execute(user, target, enemies)
 
 def create_strike():
     return Card("타격", "ATTACK", 1, effects=[DamageAction(6)], requires_target=True)
